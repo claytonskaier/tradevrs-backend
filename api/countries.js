@@ -243,7 +243,8 @@ const countriesList = [
   { code: "9800", name: "United States Minor Outlying Islands" }
 ];
 
-module.exports = allowCors((req, res) => {
+const handler = (req, res) => {
+  // Simple API key check
   const apiKey = req.headers['x-api-key'];
   const validKeys = process.env.API_KEYS?.split(',') || ['test-key-123'];
   
@@ -251,8 +252,11 @@ module.exports = allowCors((req, res) => {
     return res.status(401).json({ error: 'Invalid or missing API key' });
   }
   
+  // Return the countries list
   res.status(200).json({
     countries: countriesList,
     total: countriesList.length
   });
-});
+};
+
+module.exports = allowCors(handler);
