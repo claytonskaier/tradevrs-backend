@@ -1,3 +1,4 @@
+const allowCors = require('./_middleware');
 const countriesList = [
   { code: 'ALL_COMBINED', name: 'All Countries (Combined)' },
   { code: "1000", name: "United States of America" },
@@ -242,7 +243,7 @@ const countriesList = [
   { code: "9800", name: "United States Minor Outlying Islands" }
 ];
 
-module.exports = (req, res) => {
+module.exports = allowCors((req, res) => {
   const apiKey = req.headers['x-api-key'];
   const validKeys = process.env.API_KEYS?.split(',') || ['test-key-123'];
   
@@ -254,4 +255,4 @@ module.exports = (req, res) => {
     countries: countriesList,
     total: countriesList.length
   });
-};
+});

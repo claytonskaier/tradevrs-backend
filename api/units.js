@@ -1,3 +1,4 @@
+const allowCors = require('./_middleware');
 const unitNameMap = {
   'WAT': 'Watts',
   'KGM': 'Kilograms',
@@ -35,7 +36,7 @@ const unitNameMap = {
   'W': 'Watts'
 };
 
-module.exports = (req, res) => {
+module.exports = allowCors((req, res) => {
   const apiKey = req.headers['x-api-key'];
   const validKeys = process.env.API_KEYS?.split(',') || ['test-key-123'];
   
@@ -44,4 +45,4 @@ module.exports = (req, res) => {
   }
   
   res.status(200).json(unitNameMap);
-};
+});
