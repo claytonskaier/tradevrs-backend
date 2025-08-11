@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TradeVRS MVP - Secured</title>
+  <title>TradeVRS - Trade Data Analysis</title>
   <style>
     :root {
       --background-color: #F5F7FA;
@@ -195,29 +195,21 @@
     th {
       background-color: var(--table-header-bg);
       color: var(--text-color);
-      border-bottom: 1px solid #ddd;
+      border: 1px solid #ddd;
       padding: 10px;
-      text-align: center;
+      text-align: left;
       font-size: 14px;
     }
     td {
-      border-bottom: 1px solid #eee;
+      border: 1px solid #ddd;
       padding: 8px;
       font-size: 14px;
-      text-align: center;
     }
     tr:nth-child(even) td {
       background-color: #FAFBFD;
     }
 
     .dynamic-card {
-      display: none;
-    }
-    .pivot-card {
-      display: none;
-    }
-    #pivotContainer,
-    #negligibilityContainer {
       display: none;
     }
   </style>
@@ -230,10 +222,10 @@
 
   <div class="container">
     <header>
-      <h1>TradeVRS MVP - Secured Edition</h1>
+      <h1>TradeVRS - Trade Data Analysis</h1>
       <p>
-        This version connects to your secure backend API. All country codes and unit mappings are 
-        protected server-side and cannot be stolen from the source code.
+        Analyze U.S. import trade data by HTS codes and countries. 
+        Data sourced from U.S. Census Bureau International Trade API.
       </p>
     </header>
 
@@ -262,7 +254,7 @@
           </label>
           <label>
             Census API Key (optional):
-            <input type="text" id="apiKey" placeholder="Your Census API key">
+            <input type="text" id="apiKey" placeholder="Leave blank for 500 requests/day">
           </label>
 
           <div class="filter-grid">
@@ -301,22 +293,12 @@
     <!-- Results card -->
     <div class="card dynamic-card">
       <div id="results"></div>
-      <div id="slicedPivotContainer"></div>
-      <div id="slicedPivotValueContainer"></div>
-      <div id="slicedPivotAvgContainer"></div>
-      <div id="slicedNegligibilityContainer"></div>
-    </div>
-
-    <!-- Hidden containers for calculations -->
-    <div class="card pivot-card">
-      <div id="pivotContainer"></div>
-      <div id="negligibilityContainer"></div>
     </div>
   </div>
 
   <script>
     // ========================================
-    // SECURE API CONFIGURATION
+    // API CONFIGURATION
     // ========================================
     const API_CONFIG = {
       baseUrl: 'https://tradevrs-backend.vercel.app',
@@ -329,7 +311,7 @@
     };
 
     // ========================================
-    // GLOBAL VARIABLES (loaded from API)
+    // GLOBAL VARIABLES
     // ========================================
     let countriesList = [];
     let countryNameMap = {};
@@ -410,7 +392,7 @@
         statusEl.classList.add('disconnected');
         statusEl.classList.remove('connected');
         statusText.textContent = 'API Connection Failed ✗';
-        alert('Failed to connect to backend API. Please check the console for details.');
+        alert('Failed to connect to backend API. Please refresh the page.');
       } finally {
         loadingEl.classList.remove('active');
       }
@@ -472,15 +454,13 @@
       
       // Validation
       if (codes.length === 0) {
-        resultsDiv.innerHTML = '<p>Please enter at least one HTS code.</p>';
+        resultsDiv.innerHTML = '<p style="color: red;">Please enter at least one HTS code.</p>';
         return;
       }
       if (!startDate || !endDate) {
-        resultsDiv.innerHTML = '<p>Please select both start and end dates.</p>';
+        resultsDiv.innerHTML = '<p style="color: red;">Please select both start and end dates.</p>';
         return;
       }
-      
-      resultsDiv.innerHTML = '<p>Fetching data from Census API...</p>';
       
       // Get selected countries
       const selectedBox = document.getElementById('selectedCountrySelect');
@@ -493,24 +473,184 @@
         });
       }
       
-      // Here you would implement the actual Census API call
-      // For now, we'll just show a success message
-      resultsDiv.innerHTML = `
-        <p style="color: green;">✓ API Connected Successfully!</p>
-        <p>Ready to fetch data for:</p>
-        <ul>
-          <li>HTS Codes: ${codes.join(', ')}</li>
-          <li>Countries: ${countries.length > 0 ? countries.length + ' selected' : 'All countries'}</li>
-          <li>Date Range: ${startDate} to ${endDate}</li>
-        </ul>
-        <p style="color: #666;">
-          Note: Full Census API integration would go here. 
-          Your country codes and units are now securely loaded from your backend!
-        </p>
-      `;
+      // Build Census API call
+      const baseUrl = 'https://api.census.gov/data/timeseries/intltrade/imports/hs';
+      const vars = [
+        'I_COMMODITY', 'CTY_CODE', 'CTY_NAME', 'YEAR', 'MONTH',
+        'GEN_VAL_MO', 'CON_VAL_MO', 'GEN_QY1_MO', 'UNIT_QY1'
+      ];
+      
+      resultsDiv.innerHTML = '<p>Fetching data from Census API...</p>';
+      
+      let allData = [];
+      let errorCount = 0;
+      
+      // Process each HTS code
+      for (const code of codes) {
+        try {
+          // Build query URL
+          let url = `${baseUrl}?get=${vars.join(',')}`;
+          url += `&I_COMMODITY=${code}`;
+          url += `&COMM_LVL=HS10`;
+          url += `&SUMMARY_LVL=DET`;
+          url += `&time=from+${startDate}+to+${endDate}`;
+          
+          // Add countries if selected
+          if (countries.length > 0) {
+            countries.forEach(c => {
+              url += `&CTY_CODE=${c}`;
+            });
+          }
+          
+          // Add API key if provided
+          if (censusApiKey) {
+            url += `&key=${censusApiKey}`;
+          }
+          
+          resultsDiv.innerHTML = `<p>Fetching data for HTS ${code}...</p>`;
+          
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          
+          if (data && data.length > 1) {
+            const headers = data[0];
+            const rows = data.slice(1);
+            
+            rows.forEach(row => {
+              const obj = {};
+              headers.forEach((header, index) => {
+                obj[header] = row[index];
+              });
+              obj.HTS_CODE = code;
+              allData.push(obj);
+            });
+            
+            resultsDiv.innerHTML = `<p style="color: green;">✓ Retrieved ${rows.length} records for HTS ${code}</p>`;
+          } else {
+            resultsDiv.innerHTML += `<p style="color: orange;">⚠️ No data found for HTS ${code}</p>`;
+          }
+          
+        } catch (error) {
+          errorCount++;
+          console.error(`Error fetching HTS ${code}:`, error);
+          resultsDiv.innerHTML += `<p style="color: red;">✗ Error fetching HTS ${code}: ${error.message}</p>`;
+          
+          if (error.message.includes('429')) {
+            resultsDiv.innerHTML += `<p style="color: orange;">Rate limit reached. Consider adding a Census API key.</p>`;
+          }
+        }
+        
+        // Small delay between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      // Display results
+      if (allData.length > 0) {
+        let html = `
+          <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="color: #2e7d32;">✓ Trade Data Retrieved Successfully!</h3>
+            <p><strong>Total Records:</strong> ${allData.length}</p>
+            <p><strong>HTS Codes Processed:</strong> ${codes.length - errorCount} of ${codes.length}</p>
+            <p><strong>Date Range:</strong> ${startDate} to ${endDate}</p>
+          </div>
+        `;
+        
+        html += '<table style="width:100%; border-collapse:collapse; margin-top: 20px;">';
+        html += `
+          <thead>
+            <tr style="background:#f0f0f0;">
+              <th style="border:1px solid #ddd;padding:8px;">HTS Code</th>
+              <th style="border:1px solid #ddd;padding:8px;">Country</th>
+              <th style="border:1px solid #ddd;padding:8px;">Year</th>
+              <th style="border:1px solid #ddd;padding:8px;">Month</th>
+              <th style="border:1px solid #ddd;padding:8px;">Import Value</th>
+              <th style="border:1px solid #ddd;padding:8px;">Quantity</th>
+              <th style="border:1px solid #ddd;padding:8px;">Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+        `;
+        
+        // Show first 100 rows
+        allData.slice(0, 100).forEach(row => {
+          const value = parseInt(row.GEN_VAL_MO || 0).toLocaleString();
+          const qty = parseInt(row.GEN_QY1_MO || 0).toLocaleString();
+          const unit = unitNameMap[row.UNIT_QY1] || row.UNIT_QY1 || '-';
+          
+          html += '<tr>';
+          html += `<td style="border:1px solid #ddd;padding:5px;">${row.HTS_CODE}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;">${row.CTY_NAME || row.CTY_CODE}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;">${row.YEAR}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;">${row.MONTH}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;text-align:right;">$${value}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;text-align:right;">${qty}</td>`;
+          html += `<td style="border:1px solid #ddd;padding:5px;">${unit}</td>`;
+          html += '</tr>';
+        });
+        
+        html += '</tbody></table>';
+        
+        if (allData.length > 100) {
+          html += `<p style="color: #666; margin-top: 10px;">Showing first 100 of ${allData.length} records. Click "Download CSV" for complete data.</p>`;
+        }
+        
+        resultsDiv.innerHTML = html;
+        document.getElementById('downloadBtn').disabled = false;
+        window.tradeData = allData;
+        
+      } else {
+        resultsDiv.innerHTML = `
+          <div style="background: #fff3cd; padding: 15px; border-radius: 8px;">
+            <h3 style="color: #856404;">No Data Found</h3>
+            <p>No trade data was found. Please check:</p>
+            <ul>
+              <li>HTS codes are valid 10-digit codes</li>
+              <li>Date range is valid</li>
+              <li>Try without country filter first</li>
+            </ul>
+          </div>
+        `;
+      }
       
       // Show results card
       document.querySelector('.dynamic-card').style.display = 'block';
+    }
+
+    // ========================================
+    // CSV DOWNLOAD FUNCTION
+    // ========================================
+    function downloadCSV() {
+      if (!window.tradeData || window.tradeData.length === 0) {
+        alert('No data to download');
+        return;
+      }
+      
+      // Create CSV content
+      const headers = ['HTS_CODE', 'CTY_CODE', 'CTY_NAME', 'YEAR', 'MONTH', 'GEN_VAL_MO', 'CON_VAL_MO', 'GEN_QY1_MO', 'UNIT_QY1'];
+      let csv = headers.join(',') + '\n';
+      
+      window.tradeData.forEach(row => {
+        const values = headers.map(h => {
+          const val = row[h] || '';
+          // Escape commas and quotes
+          return val.toString().includes(',') ? `"${val}"` : val;
+        });
+        csv += values.join(',') + '\n';
+      });
+      
+      // Create download link
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `trade_data_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
     }
 
     // ========================================
@@ -522,6 +662,9 @@
       
       // Fetch button
       document.getElementById('fetchBtn').addEventListener('click', fetchData);
+      
+      // Download button
+      document.getElementById('downloadBtn').addEventListener('click', downloadCSV);
       
       // Add country button
       document.getElementById('addCountryBtn').addEventListener('click', () => {
@@ -608,9 +751,8 @@
     // ========================================
     // SUCCESS MESSAGE
     // ========================================
-    console.log('%c🔒 TradeVRS Secured Frontend Loaded!', 'color: green; font-size: 16px; font-weight: bold;');
-    console.log('%cThis version loads all data from your protected backend API', 'color: blue; font-size: 12px;');
-    console.log('%cNo country codes or unit mappings in the source code!', 'color: blue; font-size: 12px;');
+    console.log('%c🔒 TradeVRS Application Loaded!', 'color: green; font-size: 16px; font-weight: bold;');
+    console.log('%cCountry codes and units are protected by backend API', 'color: blue; font-size: 12px;');
   </script>
 </body>
 </html>
